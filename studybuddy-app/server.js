@@ -204,9 +204,20 @@ app.post('/api/check-answer', async (req, res) => {
   }
 });
 
+const { exec } = require('child_process');
+
 app.listen(PORT, () => {
-  console.log('StudyBuddy running at http://localhost:' + PORT);
+  const url = 'http://localhost:' + PORT;
+  console.log('StudyBuddy running at ' + url);
   if (!API_KEY) {
     console.log('   \u2192 Set GEMINI_API_KEY in a .env file to enable AI features.');
   }
+
+  // Auto-open browser
+  const startCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+  exec(startCmd + ' ' + url, (err) => {
+    if (err) {
+      console.warn('Failed to open browser automatically:', err.message);
+    }
+  });
 });
