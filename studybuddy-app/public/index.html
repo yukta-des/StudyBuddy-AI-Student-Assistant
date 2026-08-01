@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StudyBuddy &mdash; Hints. Progress. Mastery.</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="sb-bg-grid"></div>
+  <div class="sb-shell">
+
+    <div class="sb-header">
+      <div class="sb-brand">
+        <div class="sb-brand-mark">SB</div>
+        <div class="sb-brand-text">
+          <h1>StudyBuddy</h1>
+          <p>Hints. Progress. Mastery.</p>
+        </div>
+      </div>
+      <div class="sb-nav" id="sb-nav">
+        <button data-tab="home" class="active">Home</button>
+        <button data-tab="solve">Solve</button>
+        <button data-tab="achievements">Achievements</button>
+      </div>
+    </div>
+
+    <div id="sb-tab-home"></div>
+    <div id="sb-tab-solve" class="sb-hidden"></div>
+    <div id="sb-tab-achievements" class="sb-hidden"></div>
+
+  </div>
+  <div id="sb-modal-root"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
