@@ -6,7 +6,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
 
 if (!API_KEY) {
   console.warn('\u26A0\uFE0F  GEMINI_API_KEY is not set. Copy .env.example to .env and add your key (free, no card needed \u2014 see README).');

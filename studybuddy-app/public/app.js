@@ -4,7 +4,6 @@
   let state = { questions: [] };
   let cq = null; // current question in progress
   let inputMode = 'text';
-  let selectedCategory = 'General'; // default category key
   let uploadedImage = null; // { base64, mediaType, name }
   let busy = false;
 
@@ -36,15 +35,15 @@
     return data;
   }
 
-  async function analyzeQuestion(text, image, category) {
-    return apiPost('/api/analyze', { text: text || '', image: image || null, category: category || 'General' });
+  async function analyzeQuestion(text, image) {
+    return apiPost('/api/analyze', { text: text || '', image: image || null });
   }
-  async function getHint(problemText, hintNumber, previousHints, category) {
-    const r = await apiPost('/api/hint', { problemText, hintNumber, previousHints, category: category || 'General' });
+  async function getHint(problemText, hintNumber, previousHints) {
+    const r = await apiPost('/api/hint', { problemText, hintNumber, previousHints });
     return r.hint;
   }
-  async function getSolution(problemText, category) {
-    const r = await apiPost('/api/solution', { problemText, category: category || 'General' });
+  async function getSolution(problemText) {
+    const r = await apiPost('/api/solution', { problemText });
     return r.solution;
   }
   async function checkAnswer(problemText, userAnswer) {
@@ -55,90 +54,30 @@
   function computeStats() {
     const solved = state.questions.filter(q => q.solved !== false);
     const totalSolved = solved.length;
+    const d3 = solved.filter(q => q.difficulty === 3);
+    const d3Count = d3.length;
+    const d3LE2 = d3.filter(q => q.hintsUsed <= 2).length;
+    const d3Eq1 = d3.filter(q => q.hintsUsed === 1).length;
+    const d3Eq0 = d3.filter(q => q.hintsUsed === 0).length;
 
-    // Keys counts
-    const dsaCount = solved.filter(q => q.category === 'DSA').length;
-    const sqlCount = solved.filter(q => q.category === 'SQL').length;
-    const puzzleCount = solved.filter(q => q.category === 'Puzzle').length;
-    const generalCount = solved.filter(q => q.category === 'General').length;
-
-    // Hint bins
-    const bins = [0, 0, 0, 0, 0, 0]; // index represents count of hints used (0-5)
-    solved.forEach(q => {
-      const h = Math.min(5, Math.max(0, q.hintsUsed || 0));
-      bins[h]++;
-    });
-
-    const LE2 = solved.filter(q => q.hintsUsed <= 2).length;
-    const LE1 = solved.filter(q => q.hintsUsed <= 1).length;
-    const Eq0 = solved.filter(q => q.hintsUsed === 0).length;
-
-    // Challenge checks
-    const hasDsa = dsaCount >= 1;
-    const hasSqlLE1 = solved.some(q => q.category === 'SQL' && q.hintsUsed <= 1);
-    const has3Dsa3Sql = dsaCount >= 3 && sqlCount >= 3;
-    const hasEach0 = solved.some(q => q.category === 'DSA' && q.hintsUsed === 0) &&
-                     solved.some(q => q.category === 'SQL' && q.hintsUsed === 0) &&
-                     solved.some(q => q.category === 'Puzzle' && q.hintsUsed === 0);
-
-    const unlocked = totalSolved >= 3;
+    const unlocked = d3Count >= 5;
     let stage = 'None';
     if (unlocked) {
       stage = 'Bronze';
-      if (totalSolved >= 7 && LE2 >= 2 && hasDsa) stage = 'Silver';
-      if (totalSolved >= 12 && LE1 >= 4 && hasSqlLE1) stage = 'Gold';
-      if (totalSolved >= 20 && Eq0 >= 6 && has3Dsa3Sql) stage = 'Platinum';
-      if (totalSolved >= 30 && Eq0 >= 10 && hasEach0) stage = 'Master';
+      if (totalSolved >= 15 && d3LE2 >= 3) stage = 'Silver';
+      if (totalSolved >= 25 && d3Eq1 >= 5) stage = 'Gold';
+      if (totalSolved >= 30 && d3Eq0 >= 7) stage = 'Platinum';
+      if (totalSolved >= 50 && d3Eq0 >= 10) stage = 'Master';
     }
-
-    return {
-      totalSolved, unlocked, stage,
-      dsaCount, sqlCount, puzzleCount, generalCount,
-      bins, LE2, LE1, Eq0,
-      hasDsa, hasSqlLE1, has3Dsa3Sql, hasEach0
-    };
+    return { totalSolved, d3Count, d3LE2, d3Eq1, d3Eq0, unlocked, stage };
   }
 
   const STAGE_REQS = {
-    Bronze: {
-      label: 'Solve 3 questions to unlock the system.',
-      check: s => [
-        ['Total solved: ' + s.totalSolved + '/3', s.totalSolved >= 3]
-      ]
-    },
-    Silver: {
-      label: 'Solve 7 total + at least 2 questions using \u22642 hints + solve 1 DSA question.',
-      check: s => [
-        ['Total solved: ' + s.totalSolved + '/7', s.totalSolved >= 7],
-        ['Questions with \u22642 hints: ' + s.LE2 + '/2', s.LE2 >= 2],
-        ['DSA questions solved: ' + s.dsaCount + '/1', s.dsaCount >= 1]
-      ]
-    },
-    Gold: {
-      label: 'Solve 12 total + at least 4 questions using \u22641 hint + solve 1 SQL question with \u22641 hint.',
-      check: s => [
-        ['Total solved: ' + s.totalSolved + '/12', s.totalSolved >= 12],
-        ['Questions with \u22641 hint: ' + s.LE1 + '/4', s.LE1 >= 4],
-        ['SQL with \u22641 hint solved: ' + (s.hasSqlLE1 ? '1/1' : '0/1'), s.hasSqlLE1]
-      ]
-    },
-    Platinum: {
-      label: 'Solve 20 total + at least 6 questions using 0 hints + solve 3 DSA and 3 SQL questions.',
-      check: s => [
-        ['Total solved: ' + s.totalSolved + '/20', s.totalSolved >= 20],
-        ['Questions with 0 hints: ' + s.Eq0 + '/6', s.Eq0 >= 6],
-        ['DSA solved: ' + s.dsaCount + '/3', s.dsaCount >= 3],
-        ['SQL solved: ' + s.sqlCount + '/3', s.sqlCount >= 3]
-      ]
-    },
-    Master: {
-      label: 'Solve 30 total + at least 10 questions using 0 hints + solve DSA, SQL, and Puzzle with 0 hints.',
-      check: s => [
-        ['Total solved: ' + s.totalSolved + '/30', s.totalSolved >= 30],
-        ['Questions with 0 hints: ' + s.Eq0 + '/10', s.Eq0 >= 10],
-        ['DSA, SQL & Puzzle with 0 hints solved: ' + (s.hasEach0 ? '3/3' : 'Needs all three'), s.hasEach0]
-      ]
-    }
+    Bronze: { label: 'Solve 5 questions at Difficulty 3.', check: s => [['Difficulty-3 solved: ' + s.d3Count + '/5', s.d3Count >= 5]] },
+    Silver: { label: 'Solve 15 total + at least 3 Diff-3 questions using \u22642 hints.', check: s => [['Total solved: ' + s.totalSolved + '/15', s.totalSolved >= 15], ['Diff-3 with \u22642 hints: ' + s.d3LE2 + '/3', s.d3LE2 >= 3]] },
+    Gold: { label: 'Solve 25 total + at least 5 Diff-3 questions using exactly 1 hint.', check: s => [['Total solved: ' + s.totalSolved + '/25', s.totalSolved >= 25], ['Diff-3 with 1 hint: ' + s.d3Eq1 + '/5', s.d3Eq1 >= 5]] },
+    Platinum: { label: 'Solve 30 total + at least 7 Diff-3 questions using 0 hints.', check: s => [['Total solved: ' + s.totalSolved + '/30', s.totalSolved >= 30], ['Diff-3 with 0 hints: ' + s.d3Eq0 + '/7', s.d3Eq0 >= 7]] },
+    Master: { label: 'Solve 50 total + at least 10 Diff-3 questions using 0 hints.', check: s => [['Total solved: ' + s.totalSolved + '/50', s.totalSolved >= 50], ['Diff-3 with 0 hints: ' + s.d3Eq0 + '/10', s.d3Eq0 >= 10]] }
   };
 
   // ---------- rendering ----------
@@ -158,9 +97,9 @@
 
     let progressHtml = '';
     if (!s.unlocked) {
-      progressHtml = '<p style="font-size:13px;color:#5b5442;margin:14px 0 4px;">Solve <b>3 questions</b> to unlock the achievement system.</p>' +
-        '<div class="sb-progress-track"><div class="sb-progress-fill" style="width:' + Math.min(100, s.totalSolved / 3 * 100) + '%"></div></div>' +
-        '<p style="font-size:12px;color:#7a725c;margin:4px 0 0;">' + s.totalSolved + ' / 3 solved</p>';
+      progressHtml = '<p style="font-size:13px;color:#5b5442;margin:14px 0 4px;">Solve <b>5 Difficulty-3</b> questions to unlock the achievement system.</p>' +
+        '<div class="sb-progress-track"><div class="sb-progress-fill" style="width:' + Math.min(100, s.d3Count / 5 * 100) + '%"></div></div>' +
+        '<p style="font-size:12px;color:#7a725c;margin:4px 0 0;">' + s.d3Count + ' / 5 Difficulty-3 solved</p>';
     } else if (nextStage) {
       const reqs = STAGE_REQS[nextStage].check(s);
       progressHtml = '<p style="font-size:13px;color:#5b5442;margin:14px 0 6px;">Next: <b>' + nextStage + '</b> \u2014 ' + STAGE_REQS[nextStage].label + '</p>' +
@@ -176,18 +115,17 @@
           '<div class="sb-medal ' + (s.unlocked ? '' : 'locked') + ' ' + medalClass(s.stage) + '"><span>' + (s.unlocked ? s.stage : 'Locked') + '</span></div>' +
           '<div class="sb-stage-info">' +
             '<h3>' + (s.unlocked ? s.stage + ' Tier' : 'System Locked') + '</h3>' +
-            '<p>' + (s.unlocked ? 'Keep solving to climb the ranks.' : 'Solve problems to unlock achievements.') + '</p>' +
+            '<p>' + (s.unlocked ? 'Keep solving to climb the ranks.' : 'Solve Difficulty-3 problems to unlock achievements.') + '</p>' +
           '</div>' +
         '</div>' +
         progressHtml +
         '<div class="sb-stat-grid">' +
-          '<div class="sb-stat"><div class="num">' + s.totalSolved + '</div><div class="lbl">Total Solved</div></div>' +
-          '<div class="sb-stat"><div class="num">' + s.bins[0] + '</div><div class="lbl">0-Hint Solved</div></div>' +
-          '<div class="sb-stat"><div class="num">' + s.bins[1] + '</div><div class="lbl">1-Hint Solved</div></div>' +
-          '<div class="sb-stat"><div class="num">' + (s.dsaCount + s.sqlCount + s.puzzleCount) + '</div><div class="lbl">Categorized</div></div>' +
+          '<div class="sb-stat"><div class="num">' + s.totalSolved + '</div><div class="lbl">Solved</div></div>' +
+          '<div class="sb-stat"><div class="num">' + s.d3Count + '</div><div class="lbl">Diff-3 solved</div></div>' +
+          '<div class="sb-stat"><div class="num">' + s.d3Eq0 + '</div><div class="lbl">0-hint (D3)</div></div>' +
+          '<div class="sb-stat"><div class="num">' + s.d3Eq1 + '</div><div class="lbl">1-hint (D3)</div></div>' +
         '</div>' +
       '</div>' +
-      (s.unlocked ? renderStatsTracker(s) : '') +
       '<div class="sb-row"><button class="sb-btn" id="sb-home-newq">Start a New Question \u2192</button></div>' +
       (state.questions.length ? renderRecentLog() : '') +
       (state.questions.length ? '<div class="sb-reset-row"><button id="sb-reset-progress">Reset all progress</button></div>' : '');
@@ -209,57 +147,8 @@
       '<p class="sb-eyebrow">Recent Activity</p>' +
       recent.map(q =>
         '<div class="sb-log-item"><span class="txt">' + escapeHtml(q.problemText.slice(0, 50)) + (q.problemText.length > 50 ? '\u2026' : '') + '</span>' +
-        '<span class="meta">' + (q.category ? q.category + ' \u00B7 ' : '') + 'D' + q.difficulty + ' \u00B7 ' + q.hintsUsed + ' hint' + (q.hintsUsed === 1 ? '' : 's') + '</span></div>'
+        '<span class="meta">D' + q.difficulty + ' \u00B7 ' + q.hintsUsed + ' hint' + (q.hintsUsed === 1 ? '' : 's') + '</span></div>'
       ).join('') +
-      '</div>';
-  }
-
-  function renderStatsTracker(s) {
-    const keysHtml = 
-      '<div style="margin-bottom: 20px;">' +
-        '<h4 style="margin: 0 0 10px; font-family:\'IBM Plex Mono\', monospace; font-size:12px; text-transform: uppercase; color: var(--teal-deep);">Questions Solved by Key</h4>' +
-        '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px;">' +
-          '<div style="background: rgba(0,0,0,0.03); border: 1px solid var(--paper-line); border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">' +
-            '<span style="font-size:12px; font-weight:600; color: #4c4230;">DSA Key</span>' +
-            '<span style="font-family:\'IBM Plex Mono\', monospace; font-size:13px; font-weight:700; background: var(--ink-soft); color: var(--text-light); padding: 2px 6px; border-radius: 4px;">' + s.dsaCount + '</span>' +
-          '</div>' +
-          '<div style="background: rgba(0,0,0,0.03); border: 1px solid var(--paper-line); border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">' +
-            '<span style="font-size:12px; font-weight:600; color: #4c4230;">SQL Key</span>' +
-            '<span style="font-family:\'IBM Plex Mono\', monospace; font-size:13px; font-weight:700; background: var(--ink-soft); color: var(--text-light); padding: 2px 6px; border-radius: 4px;">' + s.sqlCount + '</span>' +
-          '</div>' +
-          '<div style="background: rgba(0,0,0,0.03); border: 1px solid var(--paper-line); border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">' +
-            '<span style="font-size:12px; font-weight:600; color: #4c4230;">Puzzle Key</span>' +
-            '<span style="font-family:\'IBM Plex Mono\', monospace; font-size:13px; font-weight:700; background: var(--ink-soft); color: var(--text-light); padding: 2px 6px; border-radius: 4px;">' + s.puzzleCount + '</span>' +
-          '</div>' +
-          '<div style="background: rgba(0,0,0,0.03); border: 1px solid var(--paper-line); border-radius: 6px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center;">' +
-            '<span style="font-size:12px; font-weight:600; color: #4c4230;">General Key</span>' +
-            '<span style="font-family:\'IBM Plex Mono\', monospace; font-size:13px; font-weight:700; background: var(--ink-soft); color: var(--text-light); padding: 2px 6px; border-radius: 4px;">' + s.generalCount + '</span>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-
-    const maxBin = Math.max(1, ...s.bins);
-    const binsHtml = 
-      '<div>' +
-        '<h4 style="margin: 0 0 10px; font-family:\'IBM Plex Mono\', monospace; font-size:12px; text-transform: uppercase; color: var(--teal-deep);">Questions Solved by Hint Count</h4>' +
-        '<div style="display: flex; flex-direction: column; gap: 8px;">' +
-          s.bins.map((val, idx) => {
-            const pct = Math.round((val / maxBin) * 100);
-            return '<div style="display: flex; align-items: center; gap: 10px;">' +
-              '<span style="width: 55px; font-family:\'IBM Plex Mono\', monospace; font-size: 11px; color: #7a725c; text-align: right;">' + (idx === 0 ? '0 hints' : idx === 1 ? '1 hint' : idx + ' hints') + '</span>' +
-              '<div style="flex: 1; height: 14px; background: rgba(0,0,0,0.05); border-radius: 3px; overflow: hidden; border: 1px solid var(--paper-line);">' +
-                '<div style="width: ' + pct + '%; height: 100%; background: linear-gradient(90deg, var(--teal-deep), var(--teal)); border-radius: 2px;"></div>' +
-              '</div>' +
-              '<span style="width: 25px; font-family:\'IBM Plex Mono\', monospace; font-size: 12px; font-weight: 700; color: var(--text-dark);">' + val + '</span>' +
-            '</div>';
-          }).join('') +
-        '</div>' +
-      '</div>';
-
-    return '<div class="sb-card">' +
-      '<p class="sb-eyebrow">Keys & Hints Tracker</p>' +
-      keysHtml +
-      binsHtml +
       '</div>';
   }
 
@@ -273,9 +162,9 @@
     if (!s.unlocked) {
       html += '<div class="sb-locked-banner">' +
         '<div class="sb-medal locked medal-none" style="margin:0 auto 10px;"><span>Locked</span></div>' +
-        '<p style="font-size:13px;color:var(--text-dim);margin:0 0 6px;">Solve <b style="color:var(--text-light)">3 questions</b> to unlock the achievement system.</p>' +
-        '<div class="sb-progress-track" style="max-width:240px;margin:8px auto 0;background:var(--ink-softer);"><div class="sb-progress-fill" style="width:' + Math.min(100, s.totalSolved / 3 * 100) + '%"></div></div>' +
-        '<p style="font-size:12px;color:var(--text-dim);margin:6px 0 0;">' + s.totalSolved + ' / 3</p>' +
+        '<p style="font-size:13px;color:var(--text-dim);margin:0 0 6px;">Solve <b style="color:var(--text-light)">5 Difficulty-3</b> problems to unlock the achievement system.</p>' +
+        '<div class="sb-progress-track" style="max-width:240px;margin:8px auto 0;background:var(--ink-softer);"><div class="sb-progress-fill" style="width:' + Math.min(100, s.d3Count / 5 * 100) + '%"></div></div>' +
+        '<p style="font-size:12px;color:var(--text-dim);margin:6px 0 0;">' + s.d3Count + ' / 5</p>' +
         '</div>';
     }
 
@@ -298,7 +187,6 @@
     cq = null;
     uploadedImage = null;
     inputMode = 'text';
-    selectedCategory = 'General';
     renderSolve();
   }
 
@@ -317,24 +205,10 @@
     return '<div class="sb-card">' +
       '<p class="sb-eyebrow">New Problem</p>' +
       '<h2 class="sb-h2">What are you working on?</h2>' +
-      
-      '<div style="margin-bottom: 12px;">' +
-        '<div style="font-size: 11px; font-family:\'IBM Plex Mono\', monospace; text-transform: uppercase; letter-spacing: 0.05em; color: #7a725c; margin-bottom: 6px;">Select Key Category</div>' +
-        '<div class="sb-category-tabs" style="display: flex; gap: 6px; flex-wrap: wrap;">' +
-          ['DSA', 'SQL', 'Puzzle', 'General'].map(cat => 
-            '<button type="button" data-cat="' + cat + '" class="sb-cat-btn ' + (selectedCategory === cat ? 'active' : '') + '">' + cat + ' Key</button>'
-          ).join('') +
-        '</div>' +
+      '<div class="sb-input-tabs">' +
+        '<button data-mode="text" class="' + (inputMode === 'text' ? 'active' : '') + '">Type it</button>' +
+        '<button data-mode="image" class="' + (inputMode === 'image' ? 'active' : '') + '">Upload image</button>' +
       '</div>' +
-
-      '<div style="margin-bottom: 12px;">' +
-        '<div style="font-size: 11px; font-family:\'IBM Plex Mono\', monospace; text-transform: uppercase; letter-spacing: 0.05em; color: #7a725c; margin-bottom: 6px;">Input Method</div>' +
-        '<div class="sb-input-tabs">' +
-          '<button data-mode="text" class="' + (inputMode === 'text' ? 'active' : '') + '">Type it</button>' +
-          '<button data-mode="image" class="' + (inputMode === 'image' ? 'active' : '') + '">Upload image</button>' +
-        '</div>' +
-      '</div>' +
-
       (inputMode === 'text'
         ? '<textarea class="sb-textarea" id="sb-qtext" placeholder="Paste or type the question here\u2026"></textarea>'
         : '<label class="sb-file-drop" id="sb-filedrop">' +
@@ -353,7 +227,6 @@
 
   function wireIntake() {
     $$('.sb-input-tabs button').forEach(b => b.onclick = () => { inputMode = b.dataset.mode; renderSolve(); });
-    $$('.sb-category-tabs button').forEach(b => b.onclick = () => { selectedCategory = b.dataset.cat; renderSolve(); });
     const drop = $('#sb-filedrop');
     if (drop) {
       drop.onclick = () => $('#sb-fileinput').click();
@@ -371,13 +244,12 @@
       if (inputMode === 'image' && !uploadedImage) { setStatus('#sb-analyze-status', 'Upload an image first.', true); return; }
       setStatus('#sb-analyze-status', '<span class="sb-spinner"></span> Analyzing\u2026', false);
       try {
-        const result = await analyzeQuestion(text, inputMode === 'image' ? uploadedImage : null, selectedCategory);
+        const result = await analyzeQuestion(text, inputMode === 'image' ? uploadedImage : null);
         cq = {
           problemText: result.problemText,
           subject: result.subject || '',
           difficulty: result.difficulty,
           reasoning: result.reasoning || '',
-          category: selectedCategory,
           hints: [],
           hintsUsed: 0,
           solutionRevealed: false,
@@ -421,11 +293,9 @@
     const canHint = cq.hintsUsed < 5 && !cq.solved;
     const canReveal = !cq.solutionRevealed && !cq.solved;
 
-    const catBadge = cq.category ? ' \u00B7 ' + cq.category : '';
-    const subBadge = cq.subject ? ' (' + escapeHtml(cq.subject) + ')' : '';
     return '<div class="sb-card">' +
       '<div class="sb-row" style="justify-content:space-between;">' +
-        '<span class="sb-diff-stamp ' + diffClass + '">Difficulty ' + cq.difficulty + catBadge + subBadge + '</span>' +
+        '<span class="sb-diff-stamp ' + diffClass + '">Difficulty ' + cq.difficulty + (cq.subject ? ' \u00B7 ' + escapeHtml(cq.subject) : '') + '</span>' +
         '<button class="sb-btn sb-btn-ghost sb-btn-sm" id="sb-newq" style="color:#7a725c;border-color:var(--paper-line);">New question</button>' +
       '</div>' +
       '<p style="font-size:14.5px;line-height:1.55;margin:14px 0 4px;">' + escapeHtml(cq.problemText) + '</p>' +
@@ -474,21 +344,13 @@
     if (anotherBtn) anotherBtn.onclick = () => { resetSolveScreen(); };
   }
 
-  function solvedBannerHtml() {
-    return '<div class="sb-card" style="border:2px solid #4C8C4A;">' +
-      '<p class="sb-eyebrow" style="color:#3d7a3b;">Solved \u2713</p>' +
-      '<p style="font-size:13px;margin:4px 0 12px;">Logged in category <b>' + (cq.category || 'General') + '</b> with ' + cq.hintsUsed + ' hint' + (cq.hintsUsed === 1 ? '' : 's') + ' at Difficulty ' + cq.difficulty + '.</p>' +
-      '<button class="sb-btn" id="sb-another">Solve Another Question</button>' +
-      '</div>';
-  }
-
   async function onGetHint() {
     if (busy) return;
     busy = true;
     setStatus('#sb-hint-status', '<span class="sb-spinner"></span> Thinking of a hint\u2026', false);
     try {
       const nextN = cq.hintsUsed + 1;
-      const hint = await getHint(cq.problemText, nextN, cq.hints, cq.category);
+      const hint = await getHint(cq.problemText, nextN, cq.hints);
       cq.hints.push(hint);
       cq.hintsUsed = nextN;
       renderSolve();
@@ -521,7 +383,7 @@
     busy = true;
     setStatus('#sb-hint-status', '<span class="sb-spinner"></span> Preparing the solution\u2026', false);
     try {
-      const sol = await getSolution(cq.problemText, cq.category);
+      const sol = await getSolution(cq.problemText);
       cq.solutionText = sol;
       cq.solutionRevealed = true;
       if (cq.hintsUsed < 5) cq.hintsUsed = 5;
@@ -556,7 +418,6 @@
     state.questions.push({
       problemText: cq.problemText,
       difficulty: cq.difficulty,
-      category: cq.category || 'General',
       hintsUsed: cq.hintsUsed,
       timestamp: Date.now()
     });
