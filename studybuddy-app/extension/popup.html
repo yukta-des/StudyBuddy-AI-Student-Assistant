@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StudyBuddy - AI Coding Mentor</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="sb-ext-header">
+    <div class="sb-brand">
+      <div class="sb-brand-mark">SB</div>
+      <div class="sb-brand-text">
+        <h1>StudyBuddy</h1>
+        <p>AI Coding Mentor & Hints</p>
+      </div>
+    </div>
+    <div class="sb-nav" id="sb-nav">
+      <button data-tab="solve" class="active">Solve</button>
+      <button data-tab="progress">Progress</button>
+      <button data-tab="settings">⚙️</button>
+    </div>
+  </div>
+
+  <div class="sb-container">
+
+    <!-- TAB: SOLVE -->
+    <div id="sb-tab-solve">
+      <!-- Screenshot Action Bar -->
+      <div class="sb-grab-bar" id="sb-grab-bar">
+        <button id="sb-grab-btn" class="sb-btn sb-btn-sm sb-btn-grab">📸 Take Screenshot of Page</button>
+      </div>
+      <div id="sb-grab-status" class="sb-grab-status" style="margin-bottom:8px; font-size:11px; color:var(--text-dim);"></div>
+
+      <!-- Problem Intake Area -->
+      <div id="sb-intake-card" class="sb-card">
+        <p class="sb-eyebrow">New Problem</p>
+
+        <!-- Screenshot Preview -->
+        <div id="sb-screenshot-preview" class="sb-hidden" style="margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span style="font-size:11px; font-weight:600; color:var(--brand);">Captured Screenshot:</span>
+            <button id="sb-clear-screenshot" class="sb-btn sb-btn-ghost sb-btn-sm" style="padding:2px 6px; font-size:10px;">✕ Remove</button>
+          </div>
+          <img id="sb-screenshot-img" style="max-width:100%; max-height:160px; border-radius:6px; border:1px solid var(--card-border); object-fit:contain; display:block;" />
+        </div>
+
+        <textarea class="sb-textarea" id="sb-qtext" placeholder="Type or paste your problem here, or click 'Take Screenshot of Page' above..."></textarea>
+        
+        <div class="sb-row" style="margin-top:10px;">
+          <button class="sb-btn" id="sb-analyze">Analyze Problem</button>
+          <span id="sb-analyze-status"></span>
+        </div>
+      </div>
+
+      <!-- Active Problem Area -->
+      <div id="sb-active-card" class="sb-card sb-hidden">
+        <div class="sb-row" style="justify-content:space-between; align-items:center;">
+          <span id="sb-diff-tag" class="sb-diff-stamp">Difficulty --</span>
+          <button class="sb-btn sb-btn-ghost sb-btn-sm" id="sb-newq">New Question</button>
+        </div>
+        <p id="sb-prob-text" class="sb-prob-display"></p>
+        <p id="sb-prob-reason" class="sb-prob-reason"></p>
+
+        <!-- Hint Progress Ticks -->
+        <div class="sb-ruler" id="sb-ticks"></div>
+
+        <!-- Rendered Hint Cards -->
+        <div id="sb-hints-container"></div>
+
+        <!-- Rendered Solution Card -->
+        <div id="sb-solution-container"></div>
+
+        <div class="sb-row" style="margin-top:10px;">
+          <button class="sb-btn" id="sb-gethint">Get Next Hint</button>
+          <button class="sb-btn sb-btn-outline" id="sb-reveal">Show Full Solution</button>
+          <span id="sb-hint-status"></span>
+        </div>
+      </div>
+
+      <!-- Answer Submission Box -->
+      <div id="sb-answer-card" class="sb-card sb-hidden">
+        <p class="sb-eyebrow">Your Answer / Code Solution</p>
+        <textarea class="sb-textarea" id="sb-answer" style="min-height:55px;" placeholder="Type or paste your solution to check..."></textarea>
+        <div class="sb-row" style="margin-top:8px;">
+          <button class="sb-btn sb-btn-dark" id="sb-checkans">Check My Answer</button>
+          <span id="sb-answer-status"></span>
+        </div>
+        <div id="sb-answer-feedback"></div>
+      </div>
+
+      <!-- Solved Banner -->
+      <div id="sb-solved-banner" class="sb-card sb-hidden" style="border:2px solid #4C8C4A;">
+        <p class="sb-eyebrow" style="color:#3d7a3b;">Solved ✓</p>
+        <p id="sb-solved-meta" style="font-size:12.5px; margin:4px 0 10px;"></p>
+        <button class="sb-btn" id="sb-another">Solve Another Problem</button>
+      </div>
+
+    </div>
+
+    <!-- TAB: PROGRESS -->
+    <div id="sb-tab-progress" class="sb-hidden">
+      <div class="sb-card">
+        <p class="sb-eyebrow">Extension Stats</p>
+        <div id="sb-stats-summary"></div>
+      </div>
+      <div class="sb-card-dark">
+        <p class="sb-eyebrow">Recent Activity</p>
+        <div id="sb-recent-list"></div>
+      </div>
+    </div>
+
+    <!-- TAB: SETTINGS -->
+    <div id="sb-tab-settings" class="sb-hidden">
+      <div class="sb-card">
+        <p class="sb-eyebrow">Backend Connection</p>
+        <label style="font-size:12px; color:var(--text-dim); display:block; margin-bottom:4px;">Server Endpoint URL:</label>
+        <input type="text" id="sb-server-url" class="sb-input" value="http://localhost:3000" />
+        <button class="sb-btn sb-btn-sm" id="sb-save-settings" style="margin-top:8px;">Save Settings</button>
+        <span id="sb-settings-status" style="font-size:12px; margin-left:8px;"></span>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -6,24 +6,34 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const API_KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+const MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
 if (!API_KEY) {
-  console.warn('\u26A0\uFE0F  GEMINI_API_KEY is not set. Copy .env.example to .env and add your key (free, no card needed \u2014 see README).');
+  console.warn('⚠️  GEMINI_API_KEY is not set. Copy .env.example to .env and add your key.');
 }
 
 app.use(express.json({ limit: '15mb' }));
+
+// CORS support for Chrome Extension requests
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ---------- Gemini helper ----------
-// `content` is an array of Anthropic-style content blocks:
+// `content` is an array of content blocks:
 //   { type: 'text', text: '...' }
 //   { type: 'image', source: { base64: '...', media_type: 'image/png' } }
-// This gets translated into Gemini's "parts" format below, so the route
-// handlers further down don't need to know which provider is behind them.
 async function callGemini(system, content) {
   if (!API_KEY) {
-    throw new Error('Server is missing GEMINI_API_KEY. Add it to your .env file and restart.');
+    throw new Error('Server is missing GEMINI_API_KEY. Set GEMINI_API_KEY in your .env file and restart the server.');
   }
 
   const parts = content.map((item) => {
@@ -33,42 +43,88 @@ async function callGemini(system, content) {
     return { text: item.text };
   });
 
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent?key=' + API_KEY;
+  const defaultModels = [
+    'gemini-1.5-flash',
+    'gemini-1.5-pro',
+    'gemini-2.0-flash-exp',
+    'gemini-1.5-flash-8b'
+  ];
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: { parts: [{ text: system }] },
-      contents: [{ role: 'user', parts: parts }],
-      generationConfig: { maxOutputTokens: 1000, temperature: 0.7 }
-    })
-  });
+  const modelsToTry = process.env.GEMINI_MODEL
+    ? [process.env.GEMINI_MODEL, ...defaultModels.filter(m => m !== process.env.GEMINI_MODEL)]
+    : defaultModels;
 
-  const data = await response.json();
-  if (!response.ok) {
-    const message = (data && data.error && data.error.message) || ('Gemini API error (status ' + response.status + ')');
-    throw new Error(message);
+  let lastError = null;
+  for (const modelName of modelsToTry) {
+    const endpoints = [
+      'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + API_KEY,
+      'https://generativelanguage.googleapis.com/v1/models/' + modelName + ':generateContent?key=' + API_KEY
+    ];
+
+    for (const url of endpoints) {
+      try {
+        const bodyObj = url.includes('/v1beta/')
+          ? {
+              system_instruction: { parts: [{ text: system }] },
+              contents: [{ role: 'user', parts: parts }],
+              generationConfig: { maxOutputTokens: 1000, temperature: 0.7 }
+            }
+          : {
+              contents: [
+                { role: 'user', parts: [{ text: 'System Instruction: ' + system }, ...parts] }
+              ],
+              generationConfig: { maxOutputTokens: 1000, temperature: 0.7 }
+            };
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(bodyObj)
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+          const candidate = data.candidates && data.candidates[0];
+          const textParts = (candidate && candidate.content && candidate.content.parts) || [];
+          const text = textParts.map((p) => p.text || '').join('\n');
+          if (text) return text;
+        } else {
+          const message = (data && data.error && data.error.message) || ('Gemini API error (status ' + response.status + ')');
+          const details = (data && data.error && data.error.details && data.error.details[0]) || {};
+          if (details.reason === 'API_KEY_SERVICE_BLOCKED' || message.includes('API_KEY_SERVICE_BLOCKED')) {
+            throw new Error('Generative Language API is disabled for Google Cloud project. Enable it at https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com or create an API key at https://aistudio.google.com/app/apikey');
+          }
+          lastError = new Error(`[${modelName}] ${message}`);
+        }
+      } catch (err) {
+        lastError = err;
+        if (err.message && err.message.includes('Generative Language API is disabled')) {
+          throw err;
+        }
+      }
+    }
   }
 
-  const candidate = data.candidates && data.candidates[0];
-  const textParts = (candidate && candidate.content && candidate.content.parts) || [];
-  const text = textParts.map((p) => p.text || '').join('\n');
-
-  if (!text) {
-    const finishReason = candidate && candidate.finishReason;
-    throw new Error('Gemini returned no text' + (finishReason ? (' (finishReason: ' + finishReason + ')') : '') + '.');
-  }
-  return text;
+  throw lastError || new Error('Failed to communicate with Gemini API across models.');
 }
 
-function parseJSON(text) {
-  let t = text.trim();
-  t = t.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
-  const start = t.indexOf('{');
-  const end = t.lastIndexOf('}');
-  if (start >= 0 && end > start) t = t.slice(start, end + 1);
-  return JSON.parse(t);
+function parseJSON(text, fallbackText) {
+  try {
+    let t = text.trim();
+    t = t.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+    const start = t.indexOf('{');
+    const end = t.lastIndexOf('}');
+    if (start >= 0 && end > start) t = t.slice(start, end + 1);
+    return JSON.parse(t);
+  } catch (e) {
+    console.warn('Failed to parse strict JSON from Gemini, using structured fallback:', e.message);
+    return {
+      problemText: fallbackText || text,
+      subject: 'Coding Problem',
+      difficulty: 2,
+      reasoning: 'Analyzed problem statement.'
+    };
+  }
 }
 
 // ---------- Routes ----------
@@ -104,7 +160,7 @@ app.post('/api/analyze', async (req, res) => {
     const system = 'You are an expert academic tutor and problem analyzer for StudyBuddy. The student categorized this problem as ' + category + '. You always respond with strict, valid, parseable JSON only — no prose, no markdown code fences.';
 
     const raw = await callGemini(system, content);
-    const parsed = parseJSON(raw);
+    const parsed = parseJSON(raw, text);
     let d = parseInt(parsed.difficulty, 10);
     if ([1, 2, 3].indexOf(d) === -1) d = 2;
     parsed.difficulty = d;
@@ -203,6 +259,19 @@ app.post('/api/check-answer', async (req, res) => {
     res.status(500).json({ error: err.message || 'Failed to check the answer.' });
   }
 });
+
+// Ensure Extension icons directory and files exist
+const fs = require('fs');
+const iconsDir = path.join(__dirname, 'extension', 'icons');
+if (!fs.existsSync(iconsDir)) {
+  fs.mkdirSync(iconsDir, { recursive: true });
+}
+const b16 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAEUlEQVR42mNkYPj/n4EAACWcAj9S13o7AAAAAElFTkSuQmCC', 'base64');
+const b48 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAAE0lEQVR42mNkYPj/n4EAACWcAj942gIhAAAAAElFTkSuQmCC', 'base64');
+const b128 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADmC086AAAAFXlEQVR42mNkYPj/n4EAACWcAj/n9wKhAAAAAElFTkSuQmCC', 'base64');
+if (!fs.existsSync(path.join(iconsDir, 'icon16.png'))) fs.writeFileSync(path.join(iconsDir, 'icon16.png'), b16);
+if (!fs.existsSync(path.join(iconsDir, 'icon48.png'))) fs.writeFileSync(path.join(iconsDir, 'icon48.png'), b48);
+if (!fs.existsSync(path.join(iconsDir, 'icon128.png'))) fs.writeFileSync(path.join(iconsDir, 'icon128.png'), b128);
 
 const { exec } = require('child_process');
 
