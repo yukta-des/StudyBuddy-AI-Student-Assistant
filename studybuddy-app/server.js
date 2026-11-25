@@ -11,7 +11,6 @@ const MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 if (!API_KEY) {
   console.warn('⚠️  GEMINI_API_KEY is not set. Copy .env.example to .env and add your key.');
 }
-
 app.use(express.json({ limit: '15mb' }));
 
 // CORS support for Chrome Extension requests
